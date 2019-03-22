@@ -15,53 +15,56 @@ silent() {
 FUSIONDIRECTORY_INSTALLED="/etc/openldap/slapd.d/docker-openldap-fusiondirectory-was-installed" 
 
 if [ ! -e ${FUSIONDIRECTORY_INSTALLED} ]; then
-	echo "** [openldap-fusiondirectory] First time Fusion Directory install detected"
+        echo "** [openldap-fusiondirectory] First time Fusion Directory install detected"
 
 
-	if [ -z "$BASE_DN" ]; then
-	    IFS='.' read -ra BASE_DN_TABLE <<< "$DOMAIN"
-	    for i in "${BASE_DN_TABLE[@]}"; do
-	      EXT="dc=$i,"
-	      BASE_DN=$BASE_DN$EXT
-	    done
+        if [ -z "$BASE_DN" ]; then
+            IFS='.' read -ra BASE_DN_TABLE <<< "$DOMAIN"
+            for i in "${BASE_DN_TABLE[@]}"; do
+              EXT="dc=$i,"
+              BASE_DN=$BASE_DN$EXT
+            done
 
-	    BASE_DN=${BASE_DN::-1}
-	  fi
+            BASE_DN=${BASE_DN::-1}
+        fi
 
-	IFS='.' read -a domain_elems <<< "${DOMAIN}"
-	SUFFIX=""
-	ROOT=""
+        # Assign the ROOT variable needed below. This is the first part of the suffix
+        ROOT="$(echo ${BASE_DN} | cut -d '=' -f 2 | cut -d ',' -f 1)"
 
-	for elem in "${domain_elems[@]}" ; do
-	    if [ "x${SUFFIX}" = x ] ; then
-	        SUFFIX="dc=${elem}"
-	        ROOT="${elem}"
-	    else
-	        BASE_DN="${SUFFIX},dc=${elem}"
-	    fi
-	done
+        IFS='.' read -a domain_elems <<< "${DOMAIN}"
+        SUFFIX=""
+        ROOT=""
 
-	CN_ADMIN="cn=admin,ou=aclroles,${BASE_DN}"
-	CN_ADMIN_BS64=$(echo -n ${CN_ADMIN} | base64 | tr -d '\n')
-	FUSIONDIRECTORY_ADMIN_USER=${FUSIONDIRECTORY_ADMIN_USER:-fd-admin}
-	FUSIONDIRECTORY_ADMIN_PASS=${FUSIONDIRECTORY_ADMIN_PASS:-"admin"}
-	ADMIN_PASS_ENCRYPTED=`slappasswd -s $ADMIN_PASS`
+        for elem in "${domain_elems[@]}" ; do
+            if [ "x${SUFFIX}" = x ] ; then
+                SUFFIX="dc=${elem}"
+                ROOT="${elem}"
+            else
+                BASE_DN="${SUFFIX},dc=${elem}"
+            fi
+        done
+
+        CN_ADMIN="cn=admin,ou=aclroles,${BASE_DN}"
+        CN_ADMIN_BS64=$(echo -n ${CN_ADMIN} | base64 | tr -d '\n')
+        FUSIONDIRECTORY_ADMIN_USER=${FUSIONDIRECTORY_ADMIN_USER:-fd-admin}
+        FUSIONDIRECTORY_ADMIN_PASS=${FUSIONDIRECTORY_ADMIN_PASS:-"admin"}
+        ADMIN_PASS_ENCRYPTED=`slappasswd -s $ADMIN_PASS`
   FUSIONDIRECTORY_ADMIN_PASS_ENCRYPTED=`slappasswd -s $FUSIONDIRECTORY_ADMIN_PASS`
   READONLY_USER_PASS_ENCRYPTED=`slappasswd -s $READONLY_USER_PASS`
   ORGANIZATION=${ORGANIZATION:-Example Organization}
-	UID_FD_ADMIN="uid=${FUSIONDIRECTORY_ADMIN_USER},${BASE_DN}"
-	UID_FD_ADMIN_BS64=$(echo -n ${UID_FD_ADMIN} | base64 | tr -d '\n')
+        UID_FD_ADMIN="uid=${FUSIONDIRECTORY_ADMIN_USER},${BASE_DN}"
+        UID_FD_ADMIN_BS64=$(echo -n ${UID_FD_ADMIN} | base64 | tr -d '\n')
 
-	### Step 1
-	if [ "$ENABLE_READONLY_USER" = "TRUE" ] || [ "$ENABLE_READONLY_USER" = "true" ];  then
-	    cat <<EOF >> /tmp/01-fusiondirectory-delete.ldif
+        ### Step 1
+        if [ "$ENABLE_READONLY_USER" = "TRUE" ] || [ "$ENABLE_READONLY_USER" = "true" ];  then
+            cat <<EOF >> /tmp/01-fusiondirectory-delete.ldif
 dn: cn=${READONLY_USER_USER},${BASE_DN}
 changetype: delete
 
 EOF
-	fi
+        fi
 
-	cat <<EOF >> /tmp/01-fusiondirectory-delete.ldif
+        cat <<EOF >> /tmp/01-fusiondirectory-delete.ldif
 dn: cn=admin,${BASE_DN}
 changetype: delete
 
@@ -70,13 +73,13 @@ changetype: delete
 
 EOF
 
-	silent ldapmodify -H 'ldapi:///' -D "cn=admin,$BASE_DN" -w $ADMIN_PASS -f /tmp/01-fusiondirectory-delete.ldif
-	
-	### Install Core Fusion Directory Schemas
-	silent fusiondirectory-insert-schema
+        silent ldapmodify -H 'ldapi:///' -D "cn=admin,$BASE_DN" -w $ADMIN_PASS -f /tmp/01-fusiondirectory-delete.ldif
+        
+        ### Install Core Fusion Directory Schemas
+        silent fusiondirectory-insert-schema
 
     ### Step 2
-	cat <<EOF > /tmp/02-fusiondirectory-base.ldif
+        cat <<EOF > /tmp/02-fusiondirectory-base.ldif
 dn: ${BASE_DN}
 changeType: add
 o: ${ORGANIZATION}
@@ -100,8 +103,8 @@ userPassword: ${ADMIN_PASS_ENCRYPTED}
 
 EOF
 
-	if [ "$ENABLE_READONLY_USER" = "TRUE" ] || [ "$ENABLE_READONLY_USER" = "true" ];  then
-    	cat <<EOF >> /tmp/02-fusiondirectory-base.ldif
+        if [ "$ENABLE_READONLY_USER" = "TRUE" ] || [ "$ENABLE_READONLY_USER" = "true" ];  then
+        cat <<EOF >> /tmp/02-fusiondirectory-base.ldif
 
 dn: cn=${READONLY_USER_USER},${BASE_DN}
 changeType: add
@@ -111,12 +114,12 @@ cn: cn=${READONLY_USER_USER}
 description: LDAP read only user
 userPassword: ${READONLY_USER_PASS_ENCRYPTED}
 EOF
-	fi
+        fi
     
-	silent ldapmodify -H 'ldapi:///' -D "cn=admin,${BASE_DN}" -w $ADMIN_PASS -f /tmp/02-fusiondirectory-base.ldif
+        silent ldapmodify -H 'ldapi:///' -D "cn=admin,${BASE_DN}" -w $ADMIN_PASS -f /tmp/02-fusiondirectory-base.ldif
 
     ### Step 3
-	cat <<EOF > /tmp/03-fusiondirectory-add.ldif
+        cat <<EOF > /tmp/03-fusiondirectory-add.ldif
 dn: uid=${FUSIONDIRECTORY_ADMIN_USER},${BASE_DN}
 changeType: add
 objectClass: inetOrgPerson
@@ -254,10 +257,10 @@ objectClass: organizationalUnit
 ou: snapshots
 EOF
 
-	silent ldapadd -H 'ldapi:///' -D "cn=admin,${BASE_DN}" -w $ADMIN_PASS -f /tmp/03-fusiondirectory-add.ldif
+        silent ldapadd -H 'ldapi:///' -D "cn=admin,${BASE_DN}" -w $ADMIN_PASS -f /tmp/03-fusiondirectory-add.ldif
 
 ### Step 4
-	cat <<EOF > /tmp/04-fusiondirectory-ppolicy.ldif
+        cat <<EOF > /tmp/04-fusiondirectory-ppolicy.ldif
 dn: cn=module{0},cn=config
 changetype: modify
 add: olcModuleLoad
@@ -274,7 +277,7 @@ olcPPolicyHashCleartext: TRUE
 EOF
 
 
-	silent ldapadd -Y EXTERNAL -H 'ldapi:///' -Q -f /tmp/04-fusiondirectory-ppolicy.ldif
+        silent ldapadd -Y EXTERNAL -H 'ldapi:///' -Q -f /tmp/04-fusiondirectory-ppolicy.ldif
   rm -rf /tmp/*.ldif
 fi
 
@@ -338,18 +341,18 @@ fd_apply() {
     A="a"
     ARG="-m"
   else 
-  	A="A"
-  	ARG="-i"
+        A="A"
+        ARG="-i"
   fi
   echo "** [openldap-fusiondirectory] ${RE}${A}pplying Fusion Directory "$@" schema"
 }
 
 ## Handle the core plugins
   if [ "$REAPPLY_PLUGIN_SCHEMAS" = "TRUE" ] || [ "$REAPPLY_PLUGIN_SCHEMAS" = "true" ];  then
-  	fd_apply core
-  	fusiondirectory-insert-schema -m core*.schema
-  	fusiondirectory-insert-schema -m ldapns.schema
-  	fusiondirectory-insert-schema -m template-fd.schema
+        fd_apply core
+        fusiondirectory-insert-schema -m core*.schema
+        fusiondirectory-insert-schema -m ldapns.schema
+        fusiondirectory-insert-schema -m template-fd.schema
   fi
 
 ### Import / Modify Schemas - Put Mail First
@@ -384,7 +387,7 @@ fd_apply() {
   fi
   
   if [[ "$PLUGIN_COMMUNITY" != "FALSE" ]] && [[ "$PLUGIN_COMMUNITY" != "false" ]];  then
-  	fd_apply community
+        fd_apply community
     silent fusiondirectory-insert-schema $ARG community*.schema
   fi
 
@@ -559,7 +562,7 @@ fd_apply() {
   fi
 
   if [[ "$PLUGIN_WEBLINK" != "FALSE" ]] && [[ "$PLUGIN_WEBLINK" != "false" ]];  then
-  	fd_apply weblink
+        fd_apply weblink
     silent fusiondirectory-insert-schema $ARG weblink*.schema
   fi
 
